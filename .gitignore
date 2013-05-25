@@ -1,0 +1,4 @@
+# IDEs & stuff
+.idea
+*.sublime*
+sftp-config.json
