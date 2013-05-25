@@ -947,7 +947,7 @@ class EasyRP extends WPPlugin
 	 * $cat rating criteria
 	 * 
 	 * @param object $cat taxonomy term representing the rating criteria
-	 * @param string $rating
+	 * @param int $rating
 	 * @return string
 	 */
 	private function comment_rating_ctrl($cat, $rating = null)
