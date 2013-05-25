@@ -42,8 +42,8 @@ class EasyRP extends WPPlugin
 		// add_action('admin_init', array($this, 'add_settings'));
 
 
-		// initialize global rating for newly created posts
-		add_filter('save_post', array($this, 'init_post_global_rating'));
+		// update average and global ratings on review save
+		add_filter('save_post', array($this, 'update_ratings'));
 
 
 		// show ratings for Review
@@ -296,33 +296,16 @@ class EasyRP extends WPPlugin
 
 
 	/**
-	 * Initialize global rating for post
+	 * update average and global ratings on review save
 	 * 
 	 * @param int $post_id
 	 * 
 	 * @action save_post
 	 */
-	public function init_post_global_rating($post_id)
+	public function update_ratings($post_id)
 	{
-		if (get_post_type($post_id) == 'easyrp_review' &&
-			!get_post_meta($post_id, 'global_average_rating_overall', true)) {
-			
-			if (isset($_POST['meta']) && is_array($_POST['meta'])) {
-				foreach ($_POST['meta'] as $kv) {
-					if ($kv['key'] == 'editor_rating_overall') {
-						update_post_meta($post_id, 'global_average_rating_overall', $kv['value']);
-						update_post_meta($post_id, 'last_rated_when', date('Y-m-d H:i:s'));
-						update_post_meta($post_id, 'last_rated_by', 'editor');
-						break;
-					}
-				}
-			} elseif (isset($_POST['metakeyselect']) && $_POST['metakeyselect'] == 'editor_rating_overall') {
-				update_post_meta($post_id, 'global_average_rating_overall', $_POST['metavalue']);
-				update_post_meta($post_id, 'last_rated_when', date('Y-m-d H:i:s'));
-				update_post_meta($post_id, 'last_rated_by', 'editor');
-			}
-			
-			// recalculate all average ratings after deleting the global rating
+		if (get_post_type($post_id) == 'easyrp_review') {
+			$this->init_post_global_rating($post_id);
 			$this->update_average_ratings($post_id);
 		}
 	}
@@ -1002,6 +985,32 @@ class EasyRP extends WPPlugin
 				if ($average === null) $global_average = $editor_rating;
 				else $global_average = ($editor_rating + $average) / 2;				
 				update_post_meta($post_id, 'global_average_' . $k, $global_average);
+			}
+		}
+	}
+	
+	/**
+	 * Initialize global rating for post
+	 *
+	 * @param int $post_id
+	 */
+	private function init_post_global_rating($post_id)
+	{
+		if (!get_post_meta($post_id, 'global_average_rating_overall', true)) {
+	
+			if (isset($_POST['meta']) && is_array($_POST['meta'])) {
+				foreach ($_POST['meta'] as $kv) {
+					if ($kv['key'] == 'editor_rating_overall') {
+						update_post_meta($post_id, 'global_average_rating_overall', $kv['value']);
+						update_post_meta($post_id, 'last_rated_when', date('Y-m-d H:i:s'));
+						update_post_meta($post_id, 'last_rated_by', 'editor');
+						break;
+					}
+				}
+			} elseif (isset($_POST['metakeyselect']) && $_POST['metakeyselect'] == 'editor_rating_overall') {
+				update_post_meta($post_id, 'global_average_rating_overall', $_POST['metavalue']);
+				update_post_meta($post_id, 'last_rated_when', date('Y-m-d H:i:s'));
+				update_post_meta($post_id, 'last_rated_by', 'editor');
 			}
 		}
 	}
