@@ -14,10 +14,13 @@ class EasyRP extends WPPlugin
 	public $path;
 	public $url;
 	public $logfile_name;
+	
+	// array of taxonomy terms representing comment ratings criteria
+	public $comment_rating_cats;
 
 
 	/**
-	 * __construct
+	 * __construct - set up basic class variables and add hooks
 	 * 
 	 * @param bool $standalone True if this is called in a standalone/ajax page.
 	 */
@@ -32,6 +35,9 @@ class EasyRP extends WPPlugin
 		register_activation_hook(__FILE__, array($this, 'activate'));
 		register_deactivation_hook(__FILE__, array($this, 'deactivate'));
 		add_action('init', array($this, 'init'));
+		
+		
+		// Uncomment these function and use them to add the admin pages and settings
 		// add_action('admin_menu', array($this, 'add_admin_pages'));
 		// add_action('admin_init', array($this, 'add_settings'));
 
@@ -40,30 +46,35 @@ class EasyRP extends WPPlugin
 		add_filter('save_post', array($this, 'init_post_global_rating'));
 
 
-		// show ratings
+		// show ratings for Review
 		add_filter('the_content', array($this, 'show_ratings'));
 
 
 		// add rating controls to comments form
 
-		// comment rating fields - frontend
-		add_action('comment_form', array($this, 'comment_form_rating_fields_after'));
-		// comment rating fields - backend
+		// add comment rating fields - frontend
+		add_action('comment_form', array($this, 'comment_form_rating_fields'));
+		// add comment rating fields - backend
 		add_action('add_meta_boxes_comment', array($this, 'add_rating_meta_boxes_comment'));
 
 		// save comment rating fields - frontend
 		add_action('pre_comment_on_post', array($this, 'allow_empty_comment'));
 		add_action('comment_post', array($this, 'save_comment_rating_meta_data'));
 		add_filter('preprocess_comment', array($this, 'verify_comment_rating_meta_data'));
-		// save comment rating fields - backed
+		// save comment rating fields - backend
 		add_action('edit_comment', array($this, 'edit_comment_save_ratings'));
 
-		// show comment ratings - frontend
+		// show comment ratings
 		add_filter('comment_text', array($this, 'show_comment_ratings'));
 	}
 
+	
 
-
+	/**
+	 * Enqueue scripts and styles, register content types, other init stuff
+	 * 
+	 * @action init
+	 */
 	public function init()
 	{
 		// javascript and css
@@ -110,9 +121,15 @@ class EasyRP extends WPPlugin
 
 
 
-	// comments
+	// these methods enable rating by comments:
 
-	public function comment_form_rating_fields_after()
+	
+	/**
+	 * add comment rating fields - frontend
+	 * 
+	 * @action comment_form
+	 */
+	public function comment_form_rating_fields()
 	{
 		global $post;
 
@@ -120,10 +137,16 @@ class EasyRP extends WPPlugin
 		if ($post->post_type != 'easyrp_review') return;
 
 		foreach ($this->comment_rating_cats as $cat) {
-			echo $this->comment_rating_widget($cat);
+			echo $this->comment_rating_ctrl($cat);
 		}
 	}
 
+	
+	/**
+	 * add comment rating fields - backend
+	 * 
+	 * @action add_meta_boxes_comment
+	 */
 	public function add_rating_meta_boxes_comment()
 	{
 		add_meta_box(
@@ -136,6 +159,11 @@ class EasyRP extends WPPlugin
 		);
 	}
 
+	/**
+	 * meta box callback for backend comment rating fields
+	 * 
+	 * @param object $comment
+	 */
 	public function add_comment_ratings_meta_box($comment)
 	{
 		// only show comment ratings meta box for reviews
@@ -153,16 +181,36 @@ class EasyRP extends WPPlugin
 				'rating_' . $cat->slug,
 				true
 			);
-			echo $this->comment_rating_widget($cat, (int) $rating);
+			echo $this->comment_rating_ctrl($cat, (int) $rating);
 		}
 	}
 
+	
+	// these methods handle saving comment rating fields (frontend):
+	
+	/**
+	 * allow comments that act only as ratings (no content)
+	 * and prevent duplicate comment errors by adding some
+	 * unique dummy comment content.
+	 * 
+	 * @action pre_comment_on_post
+	 */
 	public function allow_empty_comment()
 	{
 		// make 'comment' field optional to enable rating only comments
-		if (empty($_POST['comment'])) $_POST['comment'] = '{no comment ' . uniqid() . '}';
+		if (empty($_POST['comment'])) {
+			$_POST['comment'] = "<span style='display: none'>{no comment " . uniqid() . "}</span>";
+		}
 	}
 
+	/**
+	 * save comment rating fields - frontend
+	 * 
+	 * @param int $comment_id
+	 * @param bool $save_empty
+	 * 
+	 * @action comment_post
+	 */
 	public function save_comment_rating_meta_data($comment_id, $save_empty = false)
 	{
 		foreach ($this->comment_rating_cats as $cat) {
@@ -182,6 +230,14 @@ class EasyRP extends WPPlugin
 		$this->update_average_ratings($comment->comment_post_ID);
 	}
 
+	/**
+	 * VERY basic sanity checks when saving comment ratings via frontend
+	 * 
+	 * @param array $comment_data
+	 * @return array
+	 * 
+	 * @filter preprocess_comment
+	 */
 	public function verify_comment_rating_meta_data($comment_data)
 	{
 		foreach ($this->comment_rating_cats as $cat) {
@@ -197,6 +253,14 @@ class EasyRP extends WPPlugin
 		return $comment_data;
 	}
 
+	
+	/**
+	 * save comment rating fields - backend
+	 * 
+	 * @param int $comment_id
+	 * 
+	 * @action edit_comment
+	 */
 	public function edit_comment_save_ratings($comment_id)
 	{
 		if (isset($_POST['extend_comment_update_wpnonce']) &&
@@ -206,6 +270,14 @@ class EasyRP extends WPPlugin
 		}
 	}
 
+	/**
+	 * show comment ratings
+	 * 
+	 * @param string $text
+	 * @return string
+	 * 
+	 * @filter comment_text
+	 */
 	public function show_comment_ratings($text)
 	{
 		$comment_id = get_comment_ID();
@@ -223,7 +295,13 @@ class EasyRP extends WPPlugin
 
 
 
-	// init post global ratings
+	/**
+	 * Initialize global rating for post
+	 * 
+	 * @param int $post_id
+	 * 
+	 * @action save_post
+	 */
 	public function init_post_global_rating($post_id)
 	{
 		if (get_post_type($post_id) == 'easyrp_review' &&
@@ -251,14 +329,19 @@ class EasyRP extends WPPlugin
 
 
 
-	// API functions - to be used by plugins/widgets
-
-	// show ratings
+	/**
+	 * Show ratings for Review
+	 * 
+	 * @param string $content
+	 * @return string
+	 * 
+	 * @filter the_content
+	 */
 	public function show_ratings($content)
 	{
 		global $post;
 
-		// d($content); // DEBUG
+// 		d($content); // DEBUG
 
 		// only show ratings for reviews
 		if ($post->post_type != 'easyrp_review') return $content;
@@ -269,11 +352,31 @@ class EasyRP extends WPPlugin
 
 		$content = $ratings_html . $content;
 
-		// d($content); // DEBUG
+// 		d($content); // DEBUG
 
 		return $content;
 	}
+	
+	
+	
+	// these methods make up an API to be used by themes or plugins:
 
+	
+	/**
+	 * returns the html for a rating control
+	 * 
+	 * @param unknown $rating
+	 * @param string $read_only
+	 * @param string $cancel
+	 * @param string $score_name
+	 * @param string $target
+	 * @param string $halves
+	 * @param string $stars_path
+	 * @param string $star_size
+	 * @return string
+	 * 
+	 * TODO: properly document this
+	 */
 	public function rating_ctrl($rating,
 								$read_only = null,
 								$cancel = null,
@@ -315,7 +418,15 @@ class EasyRP extends WPPlugin
 			"></div>";
 	}
 
-	// get review rank (in a category/taxonomy or overall)
+	
+	/**
+	 * get review rank (in a category/taxonomy or overall)
+	 * 
+	 * @param int $post_id
+	 * @param object $term
+	 * 
+	 * TODO: properly document this
+	 */
 	public function get_rank($post_id, $term = null)
 	{
 		global $wpdb, $table_prefix;
@@ -345,11 +456,11 @@ class EasyRP extends WPPlugin
 				(
 					select count(distinct pi.id)
 					from
-						wp_posts pi
-						left join wp_postmeta mi on mi.post_id = pi.ID and mi.meta_key = 'global_average_rating_overall'
+						{$table_prefix}posts pi
+						left join {$table_prefix}postmeta mi on mi.post_id = pi.ID and mi.meta_key = 'global_average_rating_overall'
 			",
 			1 =>
-			"			join wp_term_relationships tri on pi.ID = tri.object_id and
+			"			join {$table_prefix}term_relationships tri on pi.ID = tri.object_id and
 							tri.term_taxonomy_id in $terms_in_param",
 			2 =>
 			"		where
@@ -358,11 +469,11 @@ class EasyRP extends WPPlugin
 						mi.meta_value >= m_garo.meta_value
 				) as rank
 			from
-				wp_posts p
-				left join wp_postmeta m_garo on m_garo.post_id = p.ID and m_garo.meta_key = 'global_average_rating_overall'
+				{$table_prefix}posts p
+				left join {$table_prefix}postmeta m_garo on m_garo.post_id = p.ID and m_garo.meta_key = 'global_average_rating_overall'
 			",
 			3 =>
-			"	join wp_term_relationships tr on p.ID = tr.object_id and
+			"	join {$table_prefix}term_relationships tr on p.ID = tr.object_id and
 					tr.term_taxonomy_id in $terms_in_param",
 			4 =>
 			"
@@ -426,6 +537,17 @@ class EasyRP extends WPPlugin
 		// }
 	}
 
+	
+	/**
+	 * get top rated reviews
+	 * 
+	 * @param number $count
+	 * @param string $term
+	 * @param array $extra_sql
+	 * @return array
+	 * 
+	 * TODO: properly document this
+	 */
 	public function top_rated_reviews($count = 4, $term = null, $extra_sql = array())
 	{
 		global $wpdb, $table_prefix;
@@ -461,11 +583,11 @@ class EasyRP extends WPPlugin
 				(
 					select count(distinct pi.id)
 					from
-						wp_posts pi
-						left join wp_postmeta mi on mi.post_id = pi.ID and mi.meta_key = 'global_average_rating_overall'",
+						{$table_prefix}posts pi
+						left join {$table_prefix}postmeta mi on mi.post_id = pi.ID and mi.meta_key = 'global_average_rating_overall'",
 
 						1 => "
-						join wp_term_relationships tri on pi.ID = tri.object_id and
+						join {$table_prefix}term_relationships tri on pi.ID = tri.object_id and
 							tri.term_taxonomy_id in $terms_in_param",
 
 					2 => "
@@ -477,21 +599,21 @@ class EasyRP extends WPPlugin
 				(
 					select count(*)
 					from
-						wp_comments
+						{$table_prefix}comments
 					where
 						comment_post_ID = p.ID
 				) as comments_no
 			from
-				wp_posts p
-				left join wp_postmeta m_garo on m_garo.post_id = p.ID and m_garo.meta_key = 'global_average_rating_overall'
-				left join wp_postmeta m_ero on m_ero.post_id = p.ID and m_ero.meta_key = 'editor_rating_overall'
-				left join wp_postmeta m_lrb on m_lrb.post_id = p.ID and m_lrb.meta_key = 'last_rated_by'
-				left join wp_postmeta m_aro on m_aro.post_id = p.ID and m_aro.meta_key = 'average_rating_overall'
-				left join wp_comments c on c.comment_ID = m_lrb.meta_value
-				left join wp_commentmeta cm on cm.comment_id = c.comment_ID and cm.meta_key = 'rating_overall'",
+				{$table_prefix}posts p
+				left join {$table_prefix}postmeta m_garo on m_garo.post_id = p.ID and m_garo.meta_key = 'global_average_rating_overall'
+				left join {$table_prefix}postmeta m_ero on m_ero.post_id = p.ID and m_ero.meta_key = 'editor_rating_overall'
+				left join {$table_prefix}postmeta m_lrb on m_lrb.post_id = p.ID and m_lrb.meta_key = 'last_rated_by'
+				left join {$table_prefix}postmeta m_aro on m_aro.post_id = p.ID and m_aro.meta_key = 'average_rating_overall'
+				left join {$table_prefix}comments c on c.comment_ID = m_lrb.meta_value
+				left join {$table_prefix}commentmeta cm on cm.comment_id = c.comment_ID and cm.meta_key = 'rating_overall'",
 
 				3 => "
-				join wp_term_relationships tr on p.ID = tr.object_id and
+				join {$table_prefix}term_relationships tr on p.ID = tr.object_id and
 					tr.term_taxonomy_id in $terms_in_param",
 
 			4 => "
@@ -541,6 +663,16 @@ class EasyRP extends WPPlugin
 		return $r;
 	}
 
+	
+	/**
+	 * get latest reviews
+	 * 
+	 * @param number $count
+	 * @param int $term_taxonomy_id
+	 * @return array
+	 * 
+	 * TODO: properly document this
+	 */
 	public function latest_reviews($count = 3, $term_taxonomy_id = null)
 	{
 		global $wpdb, $table_prefix;
@@ -585,7 +717,7 @@ class EasyRP extends WPPlugin
 
 
 
-	// activate/deactivate
+	// activate/deactivate plugin:
 
 	public function activate()
 	{
@@ -597,12 +729,14 @@ class EasyRP extends WPPlugin
 		require_once $this->path . '/deactivate.php';
 	}
 
+	
 
+	// utility methods:
 
-	public $comment_rating_cats;
-
-	// register Review custom post type and related taxonomies
-
+	
+	/**
+	 * register Review custom post type and related taxonomies
+	 */
 	private function register_review_post_type()
 	{
 		register_post_type(self::prefix . 'review', array(
@@ -707,12 +841,19 @@ class EasyRP extends WPPlugin
 			self::prefix . 'review'
 		);
 
+		// uncomment if you plant to also make ratings possible for posts
 		// register_taxonomy_for_object_type(
 		// 	self::prefix . 'rating_category',
 		// 	'post'
 		// );
 	}
 
+	
+	/**
+	 * create default rating reviews categories
+	 * (for separating user rating categories from editor rating categories
+     * and common rating categories)
+	 */
 	private function create_default_review_rating_categories()
 	{
 		$r = wp_insert_term(
@@ -749,13 +890,19 @@ class EasyRP extends WPPlugin
 		);
 	}
 
+	
+	/**
+	 * get rating categories to be used by other methods
+	 * 
+	 * @return array
+	 */
 	private function get_rating_categories()
 	{
 		$cats = get_terms(self::prefix . 'rating_category', array(
 			'hide_empty' => false,
 			'orderby' => 'slug',
 		));
-		// d($cats);
+// 		d($cats);
 
 		// get the ids for parent categories used for rating grouping
 		$rating_categories_groups_ids = array();
@@ -770,7 +917,7 @@ class EasyRP extends WPPlugin
 			}
 			if (count($rating_categories_groups_ids) >= 3) break;
 		}
-		// d($rating_categories_groups_ids);
+// 		d($rating_categories_groups_ids);
 
 		// group rating categories
 		$grouped_cats = array(
@@ -794,13 +941,28 @@ class EasyRP extends WPPlugin
 		return $grouped_cats;
 	}
 
-	private function comment_rating_widget($cat, $rating = null)
+	
+	/**
+	 * return the html for the rating widget representing the
+	 * $cat rating criteria
+	 * 
+	 * @param object $cat taxonomy term representing the rating criteria
+	 * @param string $rating
+	 * @return string
+	 */
+	private function comment_rating_ctrl($cat, $rating = null)
 	{
 		ob_start();
 		require $this->frontend_template_path('comment_rating_ctrl.php');
 		return ob_get_clean();
 	}
 
+	
+	/**
+	 * update average ratings after each new user rating
+	 * 
+	 * @param unknown $post_id
+	 */
 	private function update_average_ratings($post_id)
 	{
 		$comments = get_comments(array(
