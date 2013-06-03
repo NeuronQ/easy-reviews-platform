@@ -1,3 +1,4 @@
+<?php require dirname(__FILE__) . '/../../config.php' ?>
 jQuery(document).ready(function ($) {
 
 	var stars_dir_path = '<?php echo $_GET['stars_dir_path'] ?>';
@@ -15,7 +16,9 @@ jQuery(document).ready(function ($) {
 
 		$this.raty({
 			path: path,
-			hints: ['1', '2', '3', '4', '5'],
+			hints: ['<?php echo implode("', '", $easyrp_config->stars_hints) ?>'],
+			number: <?php echo $easyrp_config->stars_no ?>,
+			numberMax: <?php echo $easyrp_config->stars_no ?>,
 			space: false,
 			target: target,
 			targetKeep: true,
