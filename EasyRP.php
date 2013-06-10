@@ -86,13 +86,16 @@ class EasyRP extends WPPlugin
 		);
 		$stars_dir_theme_path = get_template_directory() . '/easyrp/stars';
 		if (is_dir($stars_dir_theme_path)) {
-			$stars_dir_path = get_template_directory_uri() . '/easyrp/stars';
+			$stars_dir_url = get_template_directory_uri() . '/easyrp/stars';
 		} else {
-			$stars_dir_path = $this->url . '/assets/js/libs/raty/img';
+			$stars_dir_url = $this->url . '/assets/js/libs/raty/img';
 		}
+		wp_enqueue_script('easyrp-vars',
+			$this->url . '/assets/js/easyrp-vars.js.php?&stars_dir_url=' . $stars_dir_url
+		);
 		wp_enqueue_script('easyrp-plugin',
-			$this->url . '/assets/js/easyrp-plugin.js.php?&stars_dir_path=' . $stars_dir_path,
-			array(),
+			$this->url . '/assets/js/easyrp-plugin.js',
+			array('easyrp-vars'),
 			false,
 			true
 		);

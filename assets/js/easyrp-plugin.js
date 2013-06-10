@@ -1,14 +1,13 @@
-<?php require dirname(__FILE__) . '/../../config.php' ?>
 jQuery(document).ready(function ($) {
 
-	var stars_dir_path = '<?php echo $_GET['stars_dir_path'] ?>';
+	var stars_dir_url = easyrp_config.stars_dir_url;
 
 	$('.rating-ctrl').each(function (index) {
 
 		var $this = $(this);
 		var path = $this.attr('data-stars-path') !== undefined ?
 					$this.attr('data-stars-path') :
-					stars_dir_path;
+					stars_dir_url;
 		var target = $this.attr('data-target');
 		var $target = $(target);
 		
@@ -16,9 +15,9 @@ jQuery(document).ready(function ($) {
 
 		$this.raty({
 			path: path,
-			hints: ['<?php echo implode("', '", $easyrp_config->stars_hints) ?>'],
-			number: <?php echo $easyrp_config->stars_no ?>,
-			numberMax: <?php echo $easyrp_config->stars_no ?>,
+			hints: easyrp_config.stars_hints,
+			number: easyrp_config.stars_no,
+			numberMax: easyrp_config.stars_no,
 			space: false,
 			target: target,
 			targetKeep: true,
