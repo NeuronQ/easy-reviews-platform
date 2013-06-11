@@ -3,14 +3,9 @@ require dirname(__FILE__) . '/../../config.php';
 
 header('Content-Type: application/javascript');
 
-$stars_dir_url = isset($easyrp_config->stars_dir_url) ?
-					$easyrp_config->stars_dir_url :
-					$_GET['stars_dir_url'];
+if (!isset($easyrp_config['GENERAL']['stars']['dir_url'])) {
+	$easyrp_config['GENERAL']['stars']['dir_url'] = $_GET['stars_dir_url'];
+	easyrp_configs_defaultify($easyrp_config);
+}
 
-$stars_hints = "['" . implode("', '", $easyrp_config->stars_hints) . "']";
-
-echo "easyrp_config = {
-		stars_dir_url: '$stars_dir_url',
-		stars_hints: $stars_hints,
-		stars_no: $easyrp_config->stars_no
-	}";
+echo 'easyrp_config = ' . json_encode($easyrp_config, JSON_PRETTY_PRINT);

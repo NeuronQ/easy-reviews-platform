@@ -1,6 +1,6 @@
 jQuery(document).ready(function ($) {
 
-	var stars_dir_url = easyrp_config.stars_dir_url;
+	var stars_dir_url = easyrp_config.GENERAL.stars.dir_url;
 
 	$('.rating-ctrl').each(function (index) {
 
