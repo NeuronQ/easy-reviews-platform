@@ -60,7 +60,8 @@ class EasyRP extends WPPlugin
 		// save comment rating fields - frontend
 		add_action('pre_comment_on_post', array($this, 'allow_empty_comment'));
 		add_action('comment_post', array($this, 'save_comment_rating_meta_data'));
-		add_filter('preprocess_comment', array($this, 'verify_comment_rating_meta_data'));
+		// TODO: do the verfication properly or just remove
+// 		add_filter('preprocess_comment', array($this, 'verify_comment_rating_meta_data'));
 		// save comment rating fields - backend
 		add_action('edit_comment', array($this, 'edit_comment_save_ratings'));
 
@@ -102,24 +103,55 @@ class EasyRP extends WPPlugin
 
 		// register Reviews post type
 		$this->register_review_post_type();
-
-		// create default rating reviews categories
+		
+		// populate config
+		require $this->path . '/config.php';
+		$this->config = new stdClass();
+		$this->config->rated_post_types = array();
+		foreach ($easyrp_config as $content_type => $v) {
+			if ($content_type != 'GENERAL') {
+				$this->config->rated_post_types[$content_type] = new stdClass();
+			}
+		}
+		
+		// register rating taxonomies and
+		// create default rating categories
 		// (for separating user rating categories from editor rating categories
 		// and common rating categories)
-		if (!get_term_by('slug', 'general_ratings', self::prefix . 'rating_category')) {			
-			$this->create_default_review_rating_categories();
+		foreach ($this->config->rated_post_types as $post_type => $v) {
+			$this->register_rating_taxonomy($post_type);
+			$taxonomy = $post_type . "_rating_category";
+			if (!get_term_by('slug', 'general_ratings', $taxonomy)) {
+				$this->create_default_rating_categories($taxonomy);
+			}
 		}
+		
+		foreach ($this->config->rated_post_types as $post_type => &$post_type_data) {
+			$rating_cats = $this->get_rating_categories($post_type);
+			$post_type_data->comment_rating_cats = array_merge(
+				$rating_cats['general'],
+				$rating_cats['users']
+			);
+			$post_type_data->editor_rating_cats = array_merge(
+					$rating_cats['general'],
+					$rating_cats['editors']
+			);
+		}
+		
+		// TODO:
+		// 1. foreach $this->config->rated_post_types
+		// 2. foreach $this->comment_rating_cats and $this->editor_rating_cats
 
-		// get rating categories to be used by other methods
-		$rating_cats = $this->get_rating_categories();
-		$this->comment_rating_cats = array_merge(
-			$rating_cats['general'],
-			$rating_cats['users']
-		);
-		$this->editor_rating_cats = array_merge(
-			$rating_cats['general'],
-			$rating_cats['editors']
-		);
+// 		// get rating categories to be used by other methods
+// 		$rating_cats = $this->get_rating_categories();
+// 		$this->comment_rating_cats = array_merge(
+// 			$rating_cats['general'],
+// 			$rating_cats['users']
+// 		);
+// 		$this->editor_rating_cats = array_merge(
+// 			$rating_cats['general'],
+// 			$rating_cats['editors']
+// 		);
 	}
 
 
@@ -135,12 +167,11 @@ class EasyRP extends WPPlugin
 	public function comment_form_rating_fields()
 	{
 		global $post;
-
-		// only show comment form rating controls for reviews
-		if ($post->post_type != 'easyrp_review') return;
-
-		foreach ($this->comment_rating_cats as $cat) {
-			echo $this->comment_rating_ctrl($cat);
+		
+		if (isset($this->config->rated_post_types[$post->post_type])) {
+			foreach ($this->config->rated_post_types[$post->post_type]->comment_rating_cats as $cat) {
+				echo $this->comment_rating_ctrl($cat);
+			}
 		}
 	}
 
@@ -169,20 +200,15 @@ class EasyRP extends WPPlugin
 	 */
 	public function add_comment_ratings_meta_box($comment)
 	{
-		// only show comment ratings meta box for reviews
-		if (get_post_type($comment->comment_post_ID) != 'easyrp_review') return;
-
-		wp_nonce_field(
-			'extend_comment_update',
-			'extend_comment_update_wpnonce',
-			false
-		);
-
-		foreach ($this->comment_rating_cats as $cat) {
+		// only show comment ratings meta box for comments belonging to a rated post type
+		$post_type = get_post_type($comment->comment_post_ID);
+		if (!isset($this->config->rated_post_types[$post_type])) return;
+		
+		foreach ($this->config->rated_post_types[$post_type]->comment_rating_cats as $cat) {
 			$rating = get_comment_meta(
-				$comment->comment_ID,
-				'rating_' . $cat->slug,
-				true
+					$comment->comment_ID,
+					'rating_' . $cat->slug,
+					true
 			);
 			echo $this->comment_rating_ctrl($cat, (int) $rating);
 		}
@@ -215,16 +241,19 @@ class EasyRP extends WPPlugin
 	 * @action comment_post
 	 */
 	public function save_comment_rating_meta_data($comment_id, $save_empty = false)
-	{
-		foreach ($this->comment_rating_cats as $cat) {
+	{		
+		// only do this for comments belonging to a rated post type
+		$comment = get_comment($comment_id);
+		$post_type = get_post_type($comment->comment_post_ID);
+		if (!isset($this->config->rated_post_types[$post_type])) return;
+		
+		foreach ($this->config->rated_post_types[$post_type]->comment_rating_cats as $cat) {
 			$meta_key = 'rating_' . $cat->slug;
 			if ($save_empty || !empty($_POST[$meta_key])) {
 				$meta_val = wp_filter_nohtml_kses($_POST[$meta_key]);
 				update_comment_meta($comment_id, $meta_key, $meta_val);
 			}
 		}
-
-		$comment = get_comment($comment_id);
 
 		// save when this was computed
 		update_post_meta($comment->comment_post_ID, 'last_rated_when', date('Y-m-d H:i:s'));
@@ -241,20 +270,21 @@ class EasyRP extends WPPlugin
 	 * 
 	 * @filter preprocess_comment
 	 */
-	public function verify_comment_rating_meta_data($comment_data)
-	{
-		foreach ($this->comment_rating_cats as $cat) {
-			$meta_key = 'rating_' . $cat->slug;
-			if (!empty($_POST[$meta_key]) &&
-				(!is_numeric($_POST[$meta_key]) ||
-					$_POST[$meta_key] < 0.5 ||
-					$_POST[$meta_key] > 5)) {
-				wp_die(__( 'Error: Bad rating value. Hit the Back button on your Web browser and resubmit your comment and rating.', self::text_domain));
-			}
-		}
+	// TODO: do this properly or remove it...
+// 	public function verify_comment_rating_meta_data($comment_data)
+// 	{
+// 		foreach ($this->comment_rating_cats as $cat) {
+// 			$meta_key = 'rating_' . $cat->slug;
+// 			if (!empty($_POST[$meta_key]) &&
+// 				(!is_numeric($_POST[$meta_key]) ||
+// 					$_POST[$meta_key] < 0.5 ||
+// 					$_POST[$meta_key] > 5)) {
+// 				wp_die(__( 'Error: Bad rating value. Hit the Back button on your Web browser and resubmit your comment and rating.', self::text_domain));
+// 			}
+// 		}
 
-		return $comment_data;
-	}
+// 		return $comment_data;
+// 	}
 
 	
 	/**
@@ -286,8 +316,10 @@ class EasyRP extends WPPlugin
 		$comment_id = get_comment_ID();
 		$comment = get_comment($comment_id);
 		
-		// only show for reviews
-		if (get_post_type($comment->comment_post_ID) != 'easyrp_review') return $text;
+		// only for rated post types
+		if (!isset($this->config->rated_post_types[get_post_type($comment->comment_post_ID)])) {
+			return $text;
+		}
 
 		ob_start();
 		require $this->frontend_template_path('comment_ratings_display.php');
@@ -307,16 +339,17 @@ class EasyRP extends WPPlugin
 	 */
 	public function update_ratings($post_id)
 	{
-		if (get_post_type($post_id) == 'easyrp_review') {
+		// only for rated post types
+		if (isset($this->config->rated_post_types[get_post_type($post_id)])) {
 			$this->init_post_global_rating($post_id);
-			$this->update_average_ratings($post_id);
+			$this->update_average_ratings($post_id);			
 		}
 	}
 
 
 
 	/**
-	 * Show ratings for Review
+	 * Show ratings
 	 * 
 	 * @param string $content
 	 * @return string
@@ -329,17 +362,18 @@ class EasyRP extends WPPlugin
 
 // 		d($content); // DEBUG
 
-		// only show ratings for reviews
-		if ($post->post_type != 'easyrp_review') return $content;
-
-		ob_start();
-		require $this->frontend_template_path('ratings_display.php');
-		$ratings_html = ob_get_clean();
-
-		$content = $ratings_html . $content;
-
+		// only show ratings for rated content types
+		if (array_key_exists($post->post_type, $this->config->rated_post_types)) {
+			
+			ob_start();
+			require $this->frontend_template_path('ratings_display.php');
+			$ratings_html = ob_get_clean();
+			
+			$content = $ratings_html . $content;
+		}
+		
 // 		d($content); // DEBUG
-
+		
 		return $content;
 	}
 	
@@ -406,7 +440,7 @@ class EasyRP extends WPPlugin
 
 	
 	/**
-	 * get review rank (in a category/taxonomy or overall)
+	 * get rank (in a category/taxonomy or overall)
 	 * 
 	 * @param int $post_id
 	 * @param object $term
@@ -416,12 +450,17 @@ class EasyRP extends WPPlugin
 	public function get_rank($post_id, $term = null)
 	{
 		global $wpdb, $table_prefix;
+		
+		$post_type = get_post_type($post_id);
 
-		$terms_in_param = '(';
-
-		if ($term !== null) {
+		if ($term !== null) {			
+			
+			$taxonomy = $post_type .'_review_category';
+			
+			$terms_in_param = '(';
+			
 			// get array of term and subterm ids
-			$subterms = get_terms('easyrp_review_category', array(
+			$subterms = get_terms($taxonomy, array(
 				'parent' => $term->term_id,
 			));
 			$term_taxonomy_ids = array($term->term_taxonomy_id);
@@ -450,7 +489,7 @@ class EasyRP extends WPPlugin
 							tri.term_taxonomy_id in $terms_in_param",
 			2 =>
 			"		where
-						pi.post_type = 'easyrp_review' and
+						pi.post_type = {$post_type} and
 						pi.post_status = 'publish' and
 						mi.meta_value >= m_garo.meta_value
 				) as rank
@@ -796,42 +835,45 @@ class EasyRP extends WPPlugin
 				'rewrite'             => array('slug' => self::prefix . 'review_tag'),
 			)
 		);
-
+	}
+	
+	
+	/**
+	 * register a ratings taxonomy for a post type
+	 * 
+	 * @param string $post_type
+	 */
+	private function register_rating_taxonomy($post_type)
+	{
 		register_taxonomy(
-			self::prefix . 'rating_category',
-			null,
+			$post_type . '_rating_category',
+			$post_type,
 			array(
 				'labels' => array(
-					'name'                => _x('Rating Categories', 'taxonomy general name', self::text_domain),
-					'singular_name'       => _x('Rating Category', 'taxonomy singular name', self::text_domain),
-					'search_items'        => __('Search Rating Categories', self::text_domain),
-					'all_items'           => __('All Rating Categories', self::text_domain),
-					'parent_item'         => __('Parent Rating Category', self::text_domain),
-					'parent_item_colon'   => __('Parent Rating Category:', self::text_domain),
-					'edit_item'           => __('Edit Rating Category', self::text_domain),
-					'update_item'         => __('Update Rating Category', self::text_domain),
-					'add_new_item'        => __('Add New Rating Category', self::text_domain),
-					'new_item_name'       => __('New Rating Category Name', self::text_domain),
-					'menu_name'           => __('Rating Categories', self::text_domain),
-				),
-				'hierarchical'        => true,
-				'show_ui'             => true,
-				'show_admin_column'   => true,
-				'query_var'           => true,
-				'rewrite'             => array('slug' => self::prefix . 'rating_category'),
+				'name'                => _x('Rating Categories', 'taxonomy general name', self::text_domain),
+				'singular_name'       => _x('Rating Category', 'taxonomy singular name', self::text_domain),
+				'search_items'        => __('Search Rating Categories', self::text_domain),
+				'all_items'           => __('All Rating Categories', self::text_domain),
+				'parent_item'         => __('Parent Rating Category', self::text_domain),
+				'parent_item_colon'   => __('Parent Rating Category:', self::text_domain),
+				'edit_item'           => __('Edit Rating Category', self::text_domain),
+				'update_item'         => __('Update Rating Category', self::text_domain),
+				'add_new_item'        => __('Add New Rating Category', self::text_domain),
+				'new_item_name'       => __('New Rating Category Name', self::text_domain),
+				'menu_name'           => __('Rating Categories', self::text_domain),
+			),
+			'hierarchical'        => true,
+			'show_ui'             => true,
+			'show_admin_column'   => true,
+			'query_var'           => true,
+			'rewrite'             => array('slug' => $post_type . '_rating_category'),
 			)
 		);
-
-		register_taxonomy_for_object_type(
-			self::prefix . 'rating_category',
-			self::prefix . 'review'
-		);
-
-		// uncomment if you plant to also make ratings possible for posts
-		// register_taxonomy_for_object_type(
-		// 	self::prefix . 'rating_category',
-		// 	'post'
-		// );
+	
+// 		register_taxonomy_for_object_type(
+// 			$post_type . '_rating_category',
+// 			$post_type
+// 		);
 	}
 
 	
@@ -840,11 +882,11 @@ class EasyRP extends WPPlugin
 	 * (for separating user rating categories from editor rating categories
      * and common rating categories)
 	 */
-	private function create_default_review_rating_categories()
+	private function create_default_rating_categories($taxonomy)
 	{
 		$r = wp_insert_term(
 			"General Ratings",
-			self::prefix . 'rating_category',
+			$taxonomy,
 			array(
 				'slug' => 'general_ratings',
 			)
@@ -852,7 +894,7 @@ class EasyRP extends WPPlugin
 
 		wp_insert_term(
 			"Overall",
-			self::prefix . 'rating_category',
+			$taxonomy,
 			array(
 				'slug' => 'overall',
 				'parent' => $r['term_id'],
@@ -861,7 +903,7 @@ class EasyRP extends WPPlugin
 
 		wp_insert_term(
 			"Editors' Ratings",
-			self::prefix . 'rating_category',
+			$taxonomy,
 			array(
 				'slug' => 'editors_ratings',
 			)
@@ -869,7 +911,7 @@ class EasyRP extends WPPlugin
 
 		wp_insert_term(
 			"Users' Ratings",
-			self::prefix . 'rating_category',
+			$taxonomy,
 			array(
 				'slug' => 'users_ratings',
 			)
@@ -882,9 +924,9 @@ class EasyRP extends WPPlugin
 	 * 
 	 * @return array
 	 */
-	private function get_rating_categories()
+	private function get_rating_categories($post_type)
 	{
-		$cats = get_terms(self::prefix . 'rating_category', array(
+		$cats = get_terms($post_type . '_rating_category', array(
 			'hide_empty' => false,
 			'orderby' => 'slug',
 		));
@@ -951,18 +993,26 @@ class EasyRP extends WPPlugin
 	 */
 	private function update_average_ratings($post_id)
 	{
+		// sanity check:
+		// make sure the post belong to a rated post_type
+		if (!isset($this->config->rated_post_types[get_post_type($post_id)])) {
+			$this->log("ERROR - sanity check failed: trying to _update_average_post_ratings for post if unrated post type!");
+			die();
+		}
+		
 		$comments = get_comments(array(
 			'post_id' => $post_id,
 		));
 		$authors = array();
 		$ratings_to_average = array();
+		$comment_rating_cats = $this->config->rated_post_types[get_post_type($post_id)]->comment_rating_cats;
 
 		foreach ($comments as $comment) {
 			
 			if (isset($authors[$comment->comment_author_email])) continue;
 			$authors[$comment->comment_author_email] = true;
 
-			foreach ($this->comment_rating_cats as $cat) {
+			foreach ($comment_rating_cats as $cat) {
 				$meta_key = 'rating_' . $cat->slug;
 				$meta_val = get_comment_meta($comment->comment_ID, $meta_key, true);
 				if ($meta_val) {

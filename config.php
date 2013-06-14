@@ -1,8 +1,8 @@
 <?php
 
-require $easyrp_root . '/inc/config.php';
+global $easyrp_root, $easyrp_config;
 
-global $easyrp_config;
+require $easyrp_root . '/inc/config.php';
 
 $easyrp_config = array(
 	'GENERAL' => array(

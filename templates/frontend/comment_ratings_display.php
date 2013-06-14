@@ -1,7 +1,10 @@
 <ul class='ratings'>
 
 	<?php
-	foreach ($this->comment_rating_cats as $cat) {
+	$comment_rating_cats = $this->config
+		->rated_post_types[get_post_type($comment->comment_post_ID)]
+		->comment_rating_cats;
+	foreach ($comment_rating_cats as $cat) {
 		$meta_key = 'rating_' . $cat->slug;
 		
 		if ($rating = get_comment_meta($comment_id, $meta_key, true)) {
