@@ -12,7 +12,11 @@ Any other notes about the plugin go here.
 .
 */
 
-$old_error_reporting_level = error_reporting(-1); // DEBUG
+// DEBUG
+$old_error_reporting_level = error_reporting(-1);
+$old_assert_active         = assert_options(ASSERT_ACTIVE,   true);
+$old_assert_bail           = assert_options(ASSERT_BAIL,     true);
+$old_assert_warning        = assert_options(ASSERT_WARNING,  false);
 
 /*
  * Include main plugin class and utilities and initializes global variables.
@@ -25,3 +29,6 @@ global $EasyRP;
 $EasyRP = new EasyRP();
 
 error_reporting($old_error_reporting_level); // DEBUG
+assert_options(ASSERT_ACTIVE,   $old_assert_active);
+assert_options(ASSERT_BAIL,     $old_assert_bail);
+assert_options(ASSERT_WARNING,  $old_assert_warning);

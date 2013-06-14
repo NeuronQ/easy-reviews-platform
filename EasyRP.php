@@ -575,9 +575,11 @@ class EasyRP extends WPPlugin
 	 */
 	public function top_rated($post_type, $count, $term = null, $extra_sql = array())
 	{
-		global $wpdb, $table_prefix;
+		// sanity check:
+		// ensure $post_type is a rated post type
+		assert('isset($this->config->rated_post_types[$post_type])');
 		
-		d($term);
+		global $wpdb, $table_prefix;
 
 		$terms_in_param = '(';
 
@@ -997,10 +999,7 @@ class EasyRP extends WPPlugin
 	{
 		// sanity check:
 		// make sure the post belong to a rated post_type
-		if (!isset($this->config->rated_post_types[get_post_type($post_id)])) {
-			$this->log("ERROR - sanity check failed: trying to _update_average_post_ratings for post if unrated post type!");
-			die();
-		}
+		assert('isset($this->config->rated_post_types[get_post_type($post_id)])');
 		
 		$comments = get_comments(array(
 			'post_id' => $post_id,
