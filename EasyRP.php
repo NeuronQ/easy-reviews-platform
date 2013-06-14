@@ -584,19 +584,24 @@ class EasyRP extends WPPlugin
 		$terms_in_param = '(';
 
 		if ($term !== null) {
-			// get array of term and subterm ids
-			$subterms = get_terms($term->taxonomy, array(
-				'parent' => $term->term_id,
-			));
-			$term_taxonomy_ids = array($term->term_taxonomy_id);
-			if ($subterms) foreach ($subterms as $subterm) {
-				if ($subterm->slug[0] != '_') $term_taxonomy_ids[] = $subterm->term_taxonomy_id;
+			if (is_object($term)) {
+				// get array of term and subterm ids
+				$subterms = get_terms($term->taxonomy, array(
+					'parent' => $term->term_id,
+				));
+				$term_taxonomy_ids = array($term->term_taxonomy_id);
+				if ($subterms) foreach ($subterms as $subterm) {
+					if ($subterm->slug[0] != '_') $term_taxonomy_ids[] = $subterm->term_taxonomy_id;
+				}
+	
+				// create terms placeholder string
+				$term_placeholders = array();
+				for ($i = 0; $i < count($term_taxonomy_ids); $i++) $term_placeholders[] = '%d';
+				$terms_in_param .= implode(',', $term_placeholders) . ')';
+			} else {
+				$term_taxonomy_ids = array($term);
+				$terms_in_param = "(%d)";
 			}
-
-			// create terms placeholder string
-			$term_placeholders = array();
-			for ($i = 0; $i < count($term_taxonomy_ids); $i++) $term_placeholders[] = '%d';
-			$terms_in_param .= implode(',', $term_placeholders) . ')';
 		}
 
 		$sql = array(
@@ -702,8 +707,12 @@ class EasyRP extends WPPlugin
 	 * 
 	 * TODO: properly document this
 	 */
-	public function latest_reviews($count = 3, $term_taxonomy_id = null)
+	public function latest($post_type, $count, $term = null)
 	{
+		// sanity check:
+		// ensure $post_type is a rated post type
+		assert('isset($this->config->rated_post_types[$post_type])');
+		
 		global $wpdb, $table_prefix;
 
 		$sql = array(
@@ -727,19 +736,21 @@ class EasyRP extends WPPlugin
 				left join {$table_prefix}postmeta m_ero on p.ID = m_ero.post_id and m_ero.meta_key = 'editor_rating_overall'
 				left join {$table_prefix}comments c on c.comment_ID = m_luro.meta_value
 				left join {$table_prefix}commentmeta cm on c.comment_ID = cm.comment_id and cm.meta_key = 'rating_overall'
-			where post_type = 'easyrp_review' and post_status = 'publish'
+			where post_type = '$post_type' and post_status = 'publish'
 			order by m_lrw.meta_key desc, post_modified_gmt desc
 			limit %d;
 			",
 		);
 
-		if ($term_taxonomy_id === null) {
+		if ($term === null) {
 			$sql = $sql[0] . $sql[2];
 
 			return $wpdb->get_results($wpdb->prepare($sql, $count));
 		} else {
-			$sql = implode('', $sql);
-
+			$sql = implode('', $sql);			
+			$term_taxonomy_id = is_object($term) ?
+								$term->term_taxonomy_id :
+								$term;
 			return $wpdb->get_results($wpdb->prepare($sql, $term_taxonomy_id, $count));
 		}
 	}
