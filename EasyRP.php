@@ -564,7 +564,7 @@ class EasyRP extends WPPlugin
 
 	
 	/**
-	 * get top rated reviews
+	 * get top rated
 	 * 
 	 * @param number $count
 	 * @param string $term
@@ -573,15 +573,17 @@ class EasyRP extends WPPlugin
 	 * 
 	 * TODO: properly document this
 	 */
-	public function top_rated_reviews($count = 4, $term = null, $extra_sql = array())
+	public function top_rated($post_type, $count, $term = null, $extra_sql = array())
 	{
 		global $wpdb, $table_prefix;
+		
+		d($term);
 
 		$terms_in_param = '(';
 
 		if ($term !== null) {
 			// get array of term and subterm ids
-			$subterms = get_terms('easyrp_review_category', array(
+			$subterms = get_terms($term->taxonomy, array(
 				'parent' => $term->term_id,
 			));
 			$term_taxonomy_ids = array($term->term_taxonomy_id);
@@ -617,7 +619,7 @@ class EasyRP extends WPPlugin
 
 					2 => "
 					where
-						pi.post_type = 'easyrp_review' and
+						pi.post_type = '$post_type' and
 						pi.post_status = 'publish' and
 						mi.meta_value >= m_garo.meta_value
 				) as rank,
@@ -646,7 +648,7 @@ class EasyRP extends WPPlugin
 				(isset($extra_sql['! where']) ?
 					$extra_sql['! where'] :
 					("
-					p.post_type = 'easyrp_review' and
+					p.post_type = '$post_type' and
 					p.post_status = 'publish'" .
 					(isset($extra_sql['where']) ?
 						' and ' . $extra_sql['where'] : '')
