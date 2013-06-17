@@ -454,13 +454,11 @@ class EasyRP extends WPPlugin
 		$post_type = get_post_type($post_id);
 
 		if ($term !== null) {			
-			
-			$taxonomy = $post_type .'_review_category';
-			
+						
 			$terms_in_param = '(';
 			
 			// get array of term and subterm ids
-			$subterms = get_terms($taxonomy, array(
+			$subterms = get_terms($term->taxonomy, array(
 				'parent' => $term->term_id,
 			));
 			$term_taxonomy_ids = array($term->term_taxonomy_id);
@@ -489,7 +487,7 @@ class EasyRP extends WPPlugin
 							tri.term_taxonomy_id in $terms_in_param",
 			2 =>
 			"		where
-						pi.post_type = {$post_type} and
+						pi.post_type = '{$post_type}' and
 						pi.post_status = 'publish' and
 						mi.meta_value >= m_garo.meta_value
 				) as rank
